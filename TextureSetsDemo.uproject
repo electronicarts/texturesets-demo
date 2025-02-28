@@ -4,6 +4,11 @@
 	"Category": "",
 	"Description": "",
 	"Modules": [
+		{
+			"Name": "TextureSetsBaker",
+			"Type": "UncookedOnly",
+			"LoadingPhase": "Default"
+		}
 	],
 	"Plugins": [
 		{
