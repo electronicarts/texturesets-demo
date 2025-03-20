@@ -49,16 +49,13 @@ FVector3f RandomRayDirection(FVector3f SurfaceNormal)
 	return Ray;
 }
 
-void BakeUtil::BakeUV(const BakeArgs& Args, BakeResults& Results)
+void FBakeUtil::BakeUV(const FBakeArgs& Args, FBakeResults& Results)
 {
 	#if BENCHMARK_TEXTURESET_BAKE
 		UE_LOG(LogTextureSetBake, Log, TEXT("Beginning texture set bake"));
 		const double BuildStartTime = FPlatformTime::Seconds();
 		double SectionStartTime = BuildStartTime;
 	#endif
-
-	FRawMesh RawMesh;
-	Args.SourceModel->LoadRawMesh(RawMesh);
 
 	RTCDevice device = rtcNewDevice(NULL);
 	check(device);
@@ -69,7 +66,7 @@ void BakeUtil::BakeUV(const BakeArgs& Args, BakeResults& Results)
 	RTCGeometry UVGeometry = rtcNewGeometry(device, RTCGeometryType::RTC_GEOMETRY_TYPE_TRIANGLE);
 	check(UVGeometry);
 
-	TArrayView<const FVector2f> UVArray = RawMesh.WedgeTexCoords[0];
+	TArrayView<const FVector2f> UVArray = Args.RawMesh.WedgeTexCoords[0];
 
 	FVector3f* UVVertBuffer = (FVector3f*)rtcSetNewGeometryBuffer(UVGeometry, RTCBufferType::RTC_BUFFER_TYPE_VERTEX, 0, RTCFormat::RTC_FORMAT_FLOAT3, sizeof(FVector3f), UVArray.Num());
 	uint32* UVIndexBuffer = (uint32*)rtcSetNewGeometryBuffer(UVGeometry, RTCBufferType::RTC_BUFFER_TYPE_INDEX, 0, RTCFormat::RTC_FORMAT_UINT3, sizeof(uint32) * 3, UVArray.Num() / 3);
@@ -90,8 +87,8 @@ void BakeUtil::BakeUV(const BakeArgs& Args, BakeResults& Results)
 	RTCGeometry MeshGeometry = rtcNewGeometry(device, RTCGeometryType::RTC_GEOMETRY_TYPE_TRIANGLE);
 	check(MeshGeometry);
 	
-	rtcSetSharedGeometryBuffer(MeshGeometry, RTCBufferType::RTC_BUFFER_TYPE_VERTEX, 0, RTCFormat::RTC_FORMAT_FLOAT3, RawMesh.VertexPositions.GetData(), 0, sizeof(RawMesh.VertexPositions[0]), RawMesh.VertexPositions.Num());
-	rtcSetSharedGeometryBuffer(MeshGeometry, RTCBufferType::RTC_BUFFER_TYPE_INDEX, 0, RTCFormat::RTC_FORMAT_UINT3, RawMesh.WedgeIndices.GetData(), 0, sizeof(RawMesh.WedgeIndices[0]) * 3, RawMesh.WedgeIndices.Num() / 3);
+	rtcSetSharedGeometryBuffer(MeshGeometry, RTCBufferType::RTC_BUFFER_TYPE_VERTEX, 0, RTCFormat::RTC_FORMAT_FLOAT3, Args.RawMesh.VertexPositions.GetData(), 0, sizeof(Args.RawMesh.VertexPositions[0]), Args.RawMesh.VertexPositions.Num());
+	rtcSetSharedGeometryBuffer(MeshGeometry, RTCBufferType::RTC_BUFFER_TYPE_INDEX, 0, RTCFormat::RTC_FORMAT_UINT3, Args.RawMesh.WedgeIndices.GetData(), 0, sizeof(Args.RawMesh.WedgeIndices[0]) * 3, Args.RawMesh.WedgeIndices.Num() / 3);
 	
 	rtcCommitGeometry(MeshGeometry);
 	rtcAttachGeometry(MeshScene, MeshGeometry);
@@ -140,9 +137,9 @@ void BakeUtil::BakeUV(const BakeArgs& Args, BakeResults& Results)
 				const uint32 triangle = rayhit.hit.primID;
 				const FVector3f positions[3] =
 				{
-					RawMesh.VertexPositions[RawMesh.WedgeIndices[triangle * 3]],
-					RawMesh.VertexPositions[RawMesh.WedgeIndices[triangle * 3 + 1]],
-					RawMesh.VertexPositions[RawMesh.WedgeIndices[triangle * 3 + 2]]
+					Args.RawMesh.VertexPositions[Args.RawMesh.WedgeIndices[triangle * 3]],
+					Args.RawMesh.VertexPositions[Args.RawMesh.WedgeIndices[triangle * 3 + 1]],
+					Args.RawMesh.VertexPositions[Args.RawMesh.WedgeIndices[triangle * 3 + 2]]
 				};
 
 				FVector3f InterpolatedPosition = (positions[1] * rayhit.hit.u) + (positions[2] * rayhit.hit.v) + (positions[0] * (1 - (rayhit.hit.u + rayhit.hit.v)));
@@ -258,7 +255,7 @@ void BakeUtil::BakeUV(const BakeArgs& Args, BakeResults& Results)
 #endif
 }
 
-void BakeUtil::DilateUVs(const BakeArgs& Args, BakeResults& Results, int Iterations)
+void FBakeUtil::DilateUVs(const FBakeArgs& Args, FBakeResults& Results, int Iterations)
 {
 	// TODO: Try a more advanced slope-aware dilation
 	// https://shaderbits.com/blog/uv-dilation
@@ -333,7 +330,7 @@ void BakeUtil::DilateUVs(const BakeArgs& Args, BakeResults& Results, int Iterati
 	}
 }
 
-void BakeUtil::ReplaceNANValues(BakeResults& Results, float NewValue)
+void FBakeUtil::ReplaceNANValues(FBakeResults& Results, float NewValue)
 {
 	TArray<float>& Pixels = Results.Pixels;
 	const int32 PixelCount = Pixels.Num();

@@ -33,7 +33,6 @@ public:
 	virtual void FixupData(UObject* Outer) override;
 };
 
-// Experimental module, do not use.
 UCLASS()
 class UBakerModule : public UTextureSetModule
 {
@@ -46,11 +45,9 @@ public:
 
 	virtual void ConfigureProcessingGraph(FTextureSetProcessingGraph& Graph) const override;
 
-	virtual int32 ComputeSamplingHash(const FTextureSetAssetParamsCollection* SampleParams) const override;
-
 	virtual void ConfigureSamplingGraphBuilder(
 		const FTextureSetAssetParamsCollection* SampleParams,
-		FTextureSetMaterialGraphBuilder* Builder) const override;
+		FTextureSetSampleFunctionBuilder* Builder) const override;
 
 	UPROPERTY(EditAnywhere, Category="Baker")
 	FName ElementName;

@@ -3,7 +3,7 @@
 #include "BakerModule.h"
 
 #include "TextureSetProcessingGraph.h"
-#include "TextureSetMaterialGraphBuilder.h"
+#include "TextureSetSampleFunctionBuilder.h"
 #include "TextureSetDefinition.h"
 #include "TextureSet.h"
 #include "TextureSetDefinition.h"
@@ -50,6 +50,7 @@ class FTextureBaker : public ITextureProcessingNode
 public:
 	FTextureBaker(FName Name) : ITextureProcessingNode()
 		, Name(Name)
+		, bPrepared(false)
 		, BakeArgs()
 		, BakeResults()
 	{
@@ -57,71 +58,84 @@ public:
 
 	virtual FName GetNodeTypeName() const  { return "TextureBake"; }
 
-	virtual const FTextureSetProcessedTextureDef GetTextureDef() const override
+	virtual void ComputeGraphHash(FHashBuilder& HashBuilder) const override
 	{
-		FTextureSetProcessedTextureDef Def;
-		Def.ChannelCount = 1;
-		Def.Encoding = (int)ETextureSetChannelEncoding::RangeCompression;
-		Def.Flags = (int)ETextureSetTextureFlags::Default;
-		return Def;
+		HashBuilder << Name;
+		HashBuilder << GetNodeTypeName();
 	}
 
-	virtual void LoadResources(const FTextureSetProcessingContext& Context) override
+	virtual void ComputeDataHash(const FTextureSetProcessingContext& Context, FHashBuilder& HashBuilder) const override
 	{
 		const UBakerAssetParams* BakerModuleAssetParams = Context.AssetParams.Get<UBakerAssetParams>();
 		const FBakerInstanceParam* BakerParams = BakerModuleAssetParams->BakerParams.Find(Name);
-		if (BakerParams)
+
+		HashBuilder << BakerParams->BakedTextureWidth;
+		HashBuilder << BakerParams->BakedTextureHeight;
+
+		if (IsValid(BakerParams->SourceMesh))
+		{
+			FStaticMeshSourceModel* Model = &BakerParams->SourceMesh->GetSourceModel(0);
+			HashBuilder << Model->StaticMeshDescriptionBulkData->GetBulkData().GetIdString();
+		}
+	}
+
+	virtual void Prepare(const FTextureSetProcessingContext& Context) override
+	{
+		if (bPrepared)
+			return;
+
+		const UBakerAssetParams* BakerModuleAssetParams = Context.AssetParams.Get<UBakerAssetParams>();
+		const FBakerInstanceParam* BakerParams = BakerModuleAssetParams->BakerParams.Find(Name);
+		if (BakerParams->SourceMesh)
 		{
 			BakeArgs.BakeWidth = BakerParams->BakedTextureWidth;
 			BakeArgs.BakeHeight = BakerParams->BakedTextureHeight;
 
+			if (BakerParams->SourceMesh->IsCompiling())
+			{
+				FStaticMeshCompilingManager::Get().FinishCompilation({ BakerParams->SourceMesh });
+			}
+
 			if (IsValid(BakerParams->SourceMesh))
 			{
-				if (BakerParams->SourceMesh->IsCompiling())
-				{
-					FStaticMeshCompilingManager::Get().FinishCompilation({ BakerParams->SourceMesh });
-				}
-
-				BakeArgs.SourceModel = &BakerParams->SourceMesh->GetSourceModel(0);
+				SourceModel = &BakerParams->SourceMesh->GetSourceModel(0);
 			}
 		}
+		bPrepared = true;
 	}
 
-	virtual void Initialize(const FTextureSetProcessingGraph& Graph) override
+	virtual void Cache() override
 	{
 		// TODO: Cache the result in the DDC
-		if (BakeArgs.SourceModel)
+		if (SourceModel)
 		{
+			SourceModel->LoadRawMesh(BakeArgs.RawMesh);
 			BakeResults.Pixels.SetNumUninitialized(BakeArgs.BakeWidth * BakeArgs.BakeHeight);
-			BakeUtil::BakeUV(BakeArgs, BakeResults);
+			FBakeUtil::BakeUV(BakeArgs, BakeResults);
 		}
 	}
 
-	virtual const uint32 ComputeGraphHash() const override
+	virtual const FTextureSetProcessedTextureDef GetTextureDef() const override
 	{
-		return HashCombine(GetTypeHash(Name.ToString()), GetTypeHash(GetNodeTypeName().ToString()));
+		return FTextureSetProcessedTextureDef(
+			1,
+			ETextureSetChannelEncoding::RangeCompression,
+			ETextureSetTextureFlags::Default);
 	}
 
-	virtual const uint32 ComputeDataHash(const FTextureSetProcessingContext& Context) const override
+	virtual FTextureDimension GetTextureDimension() const override
 	{
-		uint32 Hash = 0;
-		Hash = HashCombine(Hash, GetTypeHash(BakeArgs.BakeWidth));
-		Hash = HashCombine(Hash, GetTypeHash(BakeArgs.BakeHeight));
-
-		if (BakeArgs.SourceModel != nullptr && IsValid(BakeArgs.SourceModel->StaticMeshDescriptionBulkData))
-		{
-			const FString SourceID = BakeArgs.SourceModel->StaticMeshDescriptionBulkData->GetBulkData().GetIdString();
-			Hash = HashCombine(Hash, GetTypeHash(SourceID));
-		}
-		
-		return Hash;
+		check(bPrepared);
+		FTextureDimension Dim;
+		Dim.Width = BakeArgs.BakeWidth;
+		Dim.Height = BakeArgs.BakeWidth;
+		Dim.Slices = 1;
+		return Dim;
 	}
 
-	virtual FTextureDimension GetTextureDimension() const override { return { BakeArgs.BakeWidth, BakeArgs.BakeHeight, 1}; }
-
-	void ComputeChannel(int32 Channel, const FTextureDataTileDesc& Tile, float* TextureData) const override
+	void WriteChannel(int32 Channel, const FTextureDataTileDesc& Tile, float* TextureData) const override
 	{
-		if (BakeArgs.SourceModel)
+		if (BakeResults.Pixels.Num() > 0)
 		{
 			Tile.ForEachPixel([TextureData, Channel, &Tile, this](FTextureDataTileDesc::ForEachPixelContext& Context)
 			{
@@ -142,8 +156,10 @@ public:
 
 private:
 	FName Name;
-	BakeUtil::BakeArgs BakeArgs;
-	BakeUtil::BakeResults BakeResults;
+	bool bPrepared;
+	FStaticMeshSourceModel* SourceModel = nullptr;
+	FBakeUtil::FBakeArgs BakeArgs;
+	FBakeUtil::FBakeResults BakeResults;
 };
 
 void UBakerModule::ConfigureProcessingGraph(FTextureSetProcessingGraph& Graph) const
@@ -151,21 +167,12 @@ void UBakerModule::ConfigureProcessingGraph(FTextureSetProcessingGraph& Graph) c
 	Graph.AddOutputTexture(ElementName, MakeShared<FTextureBaker>(ElementName));
 }
 
-int32 UBakerModule::ComputeSamplingHash(const FTextureSetAssetParamsCollection* SampleParams) const
-{
-	uint32 Hash = Super::ComputeSamplingHash(SampleParams);
-
-	Hash = HashCombine(Hash, GetTypeHash(ElementName.ToString()));
-
-	return Hash;
-}
-
 void UBakerModule::ConfigureSamplingGraphBuilder(const FTextureSetAssetParamsCollection* SampleParams,
-	FTextureSetMaterialGraphBuilder* Builder) const
+	FTextureSetSampleFunctionBuilder* Builder) const
 {
-	Builder->AddSampleBuilder(SampleBuilderFunction([this, Builder](FTextureSetSubsampleContext& SampleContext)
+	Builder->AddSubsampleFunction(ConfigureSubsampleFunction([this, Builder](FTextureSetSubsampleBuilder& Subsample)
 	{
 		// Simply create a sample result for the element
-		SampleContext.AddResult(ElementName, SampleContext.GetProcessedTextureSample(ElementName));
+		Subsample.AddResult(ElementName, Subsample.GetSharedValue(ElementName));
 	}));
 }

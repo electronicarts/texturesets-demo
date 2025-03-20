@@ -3,39 +3,37 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "RawMesh.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTextureSetBake, Log, All);
 
-struct FStaticMeshSourceModel;
-class UStaticMesh;
-
-class BakeUtil
+class FBakeUtil
 {
 public:
-	struct BakeArgs
+	struct FBakeArgs
 	{
-		FStaticMeshSourceModel* SourceModel = nullptr;
-		int BakeWidth = 0;
-		int BakeHeight = 0;
+		FRawMesh RawMesh;
+		int BakeWidth = 1;
+		int BakeHeight = 1;
 	};
 
-	struct BakeResults
+	struct FBakeResults
 	{
 		TArray<float> Pixels;
 	};
 
-	static void Bake(const BakeArgs& Args, BakeResults& Results);
-	static void BakeUV(const BakeArgs& Args, BakeResults& Results);
-	static void DilateUVs(const BakeArgs& Args, BakeResults& Results, int Iterations);
-	static void ReplaceNANValues(BakeResults& Results, float NewValue);
+	static void Bake(const FBakeArgs& Args, FBakeResults& Results);
+	static void BakeUV(const FBakeArgs& Args, FBakeResults& Results);
+	static void DilateUVs(const FBakeArgs& Args, FBakeResults& Results, int Iterations);
+	static void ReplaceNANValues(FBakeResults& Results, float NewValue);
 
-	static inline FIntVector2 IndexToCoordinate(int Index, const BakeArgs& Args)
+	static inline FIntVector2 IndexToCoordinate(int Index, const FBakeArgs& Args)
 	{
 		const int ClampedIndex = FMath::Clamp(Index, 0, Args.BakeWidth * Args.BakeHeight - 1);
 		return FIntVector2(ClampedIndex % Args.BakeWidth, ClampedIndex / Args.BakeWidth);
 	}
 
-	static inline int CoordinateToIndex(FIntVector2 Coordinate, const BakeArgs& Args)
+	static inline int CoordinateToIndex(FIntVector2 Coordinate, const FBakeArgs& Args)
 	{
 		FIntVector2 ClampedCoord = Coordinate;
 
