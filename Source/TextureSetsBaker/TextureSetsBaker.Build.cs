@@ -11,14 +11,6 @@ public class TextureSetsBaker : ModuleRules
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"Core",
-				"Engine",
-				"ImageCore",
-				"DerivedDataCache",
-				"EditorScriptingUtilities",
-				"GraphEditor",
-				"MaterialEditor",
-				"UnrealEd",
 				"TextureSetsCommon",
 				"TextureSets",
 				"TextureSetsCompiler",
@@ -29,10 +21,9 @@ public class TextureSetsBaker : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
+				"Core",
 				"CoreUObject",
 				"Engine",
-				"Projects",
-				"RenderCore",
 				"MeshDescription",
 				"StaticMeshDescription",
 			}
