@@ -12,7 +12,7 @@ This is a small UE5 project that provides a number of useful working examples of
 <a href="https://seed.ea.com"><img src="./Docs/Img/seed-logo.png" width="150px"></a>
 <br>
 SEED is a pioneering group within Electronic Arts, combining creativity with applied research.</b> <br>
-We explore, build, and help determine the future of interactive entertainment.
+We explore, build, and help define the future of interactive entertainment.
 </p>
 </div>
 
